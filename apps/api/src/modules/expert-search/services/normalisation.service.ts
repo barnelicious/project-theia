@@ -60,7 +60,7 @@ Rules:
       });
 
       const text = res.content.find((b) => b.type === 'text')?.text ?? '{}';
-      const raw = JSON.parse(text);
+      const raw = JSON.parse(this.stripJsonFence(text));
 
       return {
         jobTitles: raw.job_titles ?? [input.jobTitle.toLowerCase()],
@@ -69,7 +69,7 @@ Rules:
         seniorities: raw.seniorities ?? [],
       };
     } catch (err) {
-      this.logger.warn(`[Normalisation] GPT normalisation failed, using raw inputs: ${err.message}`);
+      this.logger.warn(`[Normalisation] Claude normalisation failed, using raw inputs: ${err.message}`);
       // Graceful fallback — use raw inputs as-is
       return {
         jobTitles: [input.jobTitle.toLowerCase()],
@@ -78,5 +78,9 @@ Rules:
         seniorities: input.seniorities?.map((s) => s.toLowerCase()) ?? [],
       };
     }
+  }
+
+  private stripJsonFence(text: string): string {
+    return text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
   }
 }

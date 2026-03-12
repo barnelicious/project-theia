@@ -98,7 +98,7 @@ export class ClayService {
     const enriched = await this.pollUntilComplete(taskId);
 
     // Step 4: Merge Clay emails back into the candidate list
-    return this.mergeEmails(candidates, targets, contacts, enriched);
+    return this.mergeEmails(candidates, targets, enriched);
   }
 
   // ─── Step 1: Submit contacts ─────────────────────────────────────────────────
@@ -186,7 +186,6 @@ export class ClayService {
   private mergeEmails(
     allCandidates: ScoredCandidate[],
     targets: ScoredCandidate[],
-    submittedContacts: ClayContact[],
     enrichedContacts: ClayContact[],
   ): ScoredCandidate[] {
     // Build a map: normalised name → Clay email
@@ -198,12 +197,16 @@ export class ClayService {
       }
     }
 
+    // Build a set of target identifiers for reliable matching
+    const targetKeys = new Set(
+      targets.map((t) => this.candidateKey(t)),
+    );
+
     let enrichedCount = 0;
     const result = allCandidates.map((candidate) => {
       // Only update candidates that were in our target set and still lack an email
       if (candidate.email) return candidate;
-      const isTarget = targets.some((t) => t.name === candidate.name);
-      if (!isTarget) return candidate;
+      if (!targetKeys.has(this.candidateKey(candidate))) return candidate;
 
       const clayEmail = emailMap.get(this.normaliseName(candidate.name));
       if (clayEmail) {
@@ -272,6 +275,10 @@ export class ClayService {
       .replace(/[^a-z0-9]/g, '');
 
     return `${slug}.com`;
+  }
+
+  private candidateKey(c: ScoredCandidate): string {
+    return `${this.normaliseName(c.name)}|${c.apolloId ?? c.openAlexId ?? c.company ?? ''}`;
   }
 
   private normaliseName(name: string): string {

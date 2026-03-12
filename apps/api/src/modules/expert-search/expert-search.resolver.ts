@@ -1,7 +1,7 @@
 // apps/api/src/modules/expert-search/expert-search.resolver.ts
 
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { ForbiddenException, UseGuards } from '@nestjs/common';
 // Adjust these imports to match your existing auth setup
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
@@ -38,8 +38,14 @@ export class ExpertSearchResolver {
    * Results are ordered by fitScore descending.
    */
   @Query(() => ExpertSearchDto)
-  async getExpertSearch(@Args('id') id: string): Promise<ExpertSearchDto> {
+  async getExpertSearch(
+    @Args('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<ExpertSearchDto> {
     const search = await this.expertSearchService.getSearch(id);
+    if (search.triggeredBy !== user.id) {
+      throw new ForbiddenException('You do not have access to this search');
+    }
     return {
       id: search.id,
       status: search.status,

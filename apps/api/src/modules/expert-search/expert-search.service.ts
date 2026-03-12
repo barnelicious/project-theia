@@ -44,12 +44,16 @@ export class ExpertSearchService {
     this.logger.log(`[ExpertSearch] Started search ${search.id} for topic: "${input.topic}"`);
 
     // Run pipeline async — don't await so the mutation returns immediately
-    this.executePipeline(search.id, input).catch((err) => {
+    this.executePipeline(search.id, input).catch(async (err) => {
       this.logger.error(`[ExpertSearch] Pipeline failed for ${search.id}: ${err.message}`, err.stack);
-      this.prisma.expertSearch.update({
-        where: { id: search.id },
-        data: { status: 'FAILED', errorMessage: err.message },
-      });
+      try {
+        await this.prisma.expertSearch.update({
+          where: { id: search.id },
+          data: { status: 'FAILED', errorMessage: err.message },
+        });
+      } catch (updateErr) {
+        this.logger.error(`[ExpertSearch] Failed to mark search ${search.id} as FAILED: ${updateErr.message}`);
+      }
     });
 
     return search;

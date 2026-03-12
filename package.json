@@ -1,0 +1,12 @@
+{
+  "name": "project-theia",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter api dev",
+    "build": "pnpm --filter api build",
+    "start": "pnpm --filter api start",
+    "lint": "pnpm --filter api lint",
+    "test": "pnpm --filter api test"
+  }
+}

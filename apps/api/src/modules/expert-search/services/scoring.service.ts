@@ -75,7 +75,7 @@ export class ScoringService {
         batch.map((c) => this.scoreCandidate(c, context)),
       );
       scored.push(...results);
-      await this.sleep(1000); // respect OpenAI rate limits
+      await this.sleep(1000); // respect Anthropic rate limits
     }
 
     // Sort by fitScore descending
@@ -112,7 +112,7 @@ export class ScoringService {
     return merged;
   }
 
-  // ─── Per-candidate GPT scoring ───────────────────────────────────────────────
+  // ─── Per-candidate Claude scoring ────────────────────────────────────────────
 
   private async scoreCandidate(
     candidate: { source: ExpertSource; data: AcademicCandidate | RecruitmentCandidate },
@@ -193,7 +193,7 @@ Both sources: penalise if location doesn't match, reward if email is available (
       });
 
       const text = res.content.find((b) => b.type === 'text')?.text ?? '{}';
-      const raw = JSON.parse(text);
+      const raw = JSON.parse(this.stripJsonFence(text));
 
       return {
         source,
@@ -218,7 +218,7 @@ Both sources: penalise if location doesn't match, reward if email is available (
         outreachDraft: raw.outreach_draft ?? '',
       };
     } catch (err) {
-      this.logger.warn(`[Scoring] GPT scoring failed for ${name}: ${err.message}`);
+      this.logger.warn(`[Scoring] Claude scoring failed for ${name}: ${err.message}`);
       // Return a minimal record rather than dropping the candidate
       return this.fallbackScore(source, name, email, isAcademic ? academicData! : null, !isAcademic ? recruitmentData! : null);
     }
@@ -261,6 +261,10 @@ Both sources: penalise if location doesn't match, reward if email is available (
       scoringRationale: 'Scoring failed — manual review required.',
       outreachDraft: '',
     };
+  }
+
+  private stripJsonFence(text: string): string {
+    return text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
   }
 
   private sleep(ms: number): Promise<void> {

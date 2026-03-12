@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Expert Search ──────────────────────────────────────────────────────────
+
+enum ExpertSource {
+  ACADEMIC
+  RECRUITMENT
+}
+
+enum RecommendedAction {
+  OUTREACH
+  REVIEW
+  SKIP
+}
+
+model ExpertSearch {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Who triggered it
+  triggeredBy String // userId from your existing User model
+
+  // Search inputs (stored for replay / audit)
+  topic           String
+  jobTitle        String
+  jobDescription  String
+  locations       String[] // e.g. ["united states", "canada"]
+  seniorities     String[]
+  companyKeywords String[]
+  minHIndex       Int      @default(0)
+  minCitations    Int      @default(0)
+
+  // Status
+  status       String    @default("RUNNING") // RUNNING | COMPLETE | FAILED
+  completedAt  DateTime?
+  errorMessage String?
+
+  results ExpertSearchResult[]
+
+  @@map("expert_searches")
+}
+
+model ExpertSearchResult {
+  id       String @id @default(cuid())
+  searchId String
+
+  // Source tracking
+  source ExpertSource
+
+  // Identity
+  name       String
+  email      String?
+  orcid      String?
+  openAlexId String?
+  apolloId   String?
+
+  // Academic metrics
+  hIndex          Int?
+  citations       Int?
+  worksCount      Int?
+  lastInstitution String?
+
+  // Recruitment-specific fields
+  jobTitle    String?
+  seniority   String?
+  company     String?
+  linkedinUrl String?
+
+  // Unified scoring
+  fitScore          Float // 0-100
+  confidence        Float // 0-1
+  recommendedAction RecommendedAction
+  scoringRationale  String
+  outreachDraft     String
+
+  createdAt DateTime @default(now())
+
+  search ExpertSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+
+  @@index([searchId])
+  @@index([source])
+  @@index([fitScore])
+  @@map("expert_search_results")
+}

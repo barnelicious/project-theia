@@ -1,6 +1,7 @@
 // apps/api/src/modules/expert-search/expert-search.module.ts
 
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ExpertSearchResolver } from './expert-search.resolver';
 import { ExpertSearchService } from './expert-search.service';
 import { OpenAlexService } from './services/openalex.service';
@@ -10,6 +11,7 @@ import { NormalisationService } from './services/normalisation.service';
 import { ClayService } from './services/clay.service';
 
 @Module({
+  imports: [ConfigModule],
   providers: [
     ExpertSearchResolver,
     ExpertSearchService,

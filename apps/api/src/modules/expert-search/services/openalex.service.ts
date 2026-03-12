@@ -26,6 +26,37 @@ export interface AcademicCandidate {
   topicPaperCount: number;
 }
 
+// Common location name → ISO 3166-1 alpha-2 country code mapping
+const LOCATION_TO_COUNTRY_CODE: Record<string, string> = {
+  'united states': 'us', 'usa': 'us', 'us': 'us',
+  'united kingdom': 'gb', 'uk': 'gb', 'gb': 'gb', 'england': 'gb', 'scotland': 'gb', 'wales': 'gb',
+  'canada': 'ca', 'ca': 'ca',
+  'australia': 'au', 'au': 'au',
+  'germany': 'de', 'de': 'de',
+  'france': 'fr', 'fr': 'fr',
+  'netherlands': 'nl', 'nl': 'nl',
+  'switzerland': 'ch', 'ch': 'ch',
+  'japan': 'jp', 'jp': 'jp',
+  'china': 'cn', 'cn': 'cn',
+  'india': 'in', 'in': 'in',
+  'brazil': 'br', 'br': 'br',
+  'italy': 'it', 'it': 'it',
+  'spain': 'es', 'es': 'es',
+  'south korea': 'kr', 'korea': 'kr', 'kr': 'kr',
+  'sweden': 'se', 'se': 'se',
+  'israel': 'il', 'il': 'il',
+  'singapore': 'sg', 'sg': 'sg',
+  'new zealand': 'nz', 'nz': 'nz',
+  'ireland': 'ie', 'ie': 'ie',
+  'belgium': 'be', 'be': 'be',
+  'austria': 'at', 'at': 'at',
+  'denmark': 'dk', 'dk': 'dk',
+  'norway': 'no', 'no': 'no',
+  'finland': 'fi', 'fi': 'fi',
+  'portugal': 'pt', 'pt': 'pt',
+  'poland': 'pl', 'pl': 'pl',
+};
+
 @Injectable()
 export class OpenAlexService {
   private readonly logger = new Logger(OpenAlexService.name);
@@ -55,12 +86,12 @@ export class OpenAlexService {
 
     this.logger.log(`[OpenAlex] Starting academic search: topic="${topic}", locations=${JSON.stringify(locations)}`);
 
-    // Step 1: Search works by topic, collect unique author IDs
-    const authorIds = await this.searchAuthorsByTopic(topic, maxResults);
-    this.logger.log(`[OpenAlex] Found ${authorIds.length} unique authors from topic search`);
+    // Step 1: Search works by topic, collect unique author IDs with topic paper counts
+    const authorPaperCounts = await this.searchAuthorsByTopic(topic, maxResults);
+    this.logger.log(`[OpenAlex] Found ${authorPaperCounts.size} unique authors from topic search`);
 
     // Step 2: Enrich each author, apply threshold filter
-    const enriched = await this.enrichAuthors(authorIds, { minHIndex, minCitations, locations });
+    const enriched = await this.enrichAuthors(authorPaperCounts, { minHIndex, minCitations, locations });
     this.logger.log(`[OpenAlex] ${enriched.length} authors passed thresholds`);
 
     // Step 3: For qualifying authors, attempt email extraction from recent PDFs
@@ -71,8 +102,8 @@ export class OpenAlexService {
 
   // ─── Step 1: Topic → Author IDs ─────────────────────────────────────────────
 
-  private async searchAuthorsByTopic(topic: string, maxResults: number): Promise<string[]> {
-    const authorIdSet = new Set<string>();
+  private async searchAuthorsByTopic(topic: string, maxResults: number): Promise<Map<string, number>> {
+    const authorPaperCounts = new Map<string, number>();
     let cursor = '*';
     let fetched = 0;
     const perPage = 50;
@@ -96,7 +127,10 @@ export class OpenAlexService {
         for (const work of works) {
           for (const authorship of work.authorships ?? []) {
             const id = authorship.author?.id;
-            if (id) authorIdSet.add(id.replace('https://openalex.org/', ''));
+            if (id) {
+              const shortId = id.replace('https://openalex.org/', '');
+              authorPaperCounts.set(shortId, (authorPaperCounts.get(shortId) ?? 0) + 1);
+            }
           }
         }
 
@@ -111,18 +145,18 @@ export class OpenAlexService {
       }
     }
 
-    return Array.from(authorIdSet);
+    return authorPaperCounts;
   }
 
   // ─── Step 2: Enrich authors + filter ────────────────────────────────────────
 
   private async enrichAuthors(
-    authorIds: string[],
+    authorPaperCounts: Map<string, number>,
     filters: { minHIndex: number; minCitations: number; locations: string[] },
   ): Promise<(OpenAlexAuthorRaw & { topicPaperCount: number })[]> {
     const results: (OpenAlexAuthorRaw & { topicPaperCount: number })[] = [];
 
-    for (const id of authorIds) {
+    for (const [id, topicPaperCount] of authorPaperCounts) {
       try {
         const res = await this.client.get(`/authors/${id}`);
         const author: OpenAlexAuthorRaw = res.data;
@@ -138,16 +172,16 @@ export class OpenAlexService {
         // Location filter — skip if locations specified and author doesn't match
         if (filters.locations.length > 0) {
           const authorCountry = author.last_known_institutions?.[0]?.country_code?.toLowerCase() ?? '';
-          const locationMatch = filters.locations.some(
-            (loc) => loc.toLowerCase().includes(authorCountry) || authorCountry.includes(loc.toLowerCase().slice(0, 2)),
-          );
-          if (!locationMatch) {
+          const allowedCodes = filters.locations
+            .map((loc) => LOCATION_TO_COUNTRY_CODE[loc.toLowerCase().trim()])
+            .filter(Boolean);
+          if (allowedCodes.length > 0 && !allowedCodes.includes(authorCountry)) {
             await this.sleep(this.RATE_LIMIT_MS);
             continue;
           }
         }
 
-        results.push({ ...author, topicPaperCount: author.works_count });
+        results.push({ ...author, topicPaperCount });
         await this.sleep(this.RATE_LIMIT_MS);
       } catch (err) {
         this.logger.warn(`[OpenAlex] Author enrichment failed for ${id}: ${err.message}`);
