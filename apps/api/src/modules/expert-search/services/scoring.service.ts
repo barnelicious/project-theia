@@ -185,7 +185,9 @@ Return ONLY valid JSON with this exact shape:
 Scoring guidance by source:
 - ACADEMIC: Weight h-index (>10 = strong), citation count, topic paper relevance, and institution prestige.
 - RECRUITMENT: Weight title/seniority match to job description, company relevance, and any academic credentials if present.
-Both sources: penalise if location doesn't match, reward if email is available (OUTREACH > REVIEW).`;
+Both sources: penalise if location doesn't match. Email availability should NOT affect fit_score — score purely on expertise fit.
+- recommended_action: Use OUTREACH if email is available and fit_score >= 60. Use REVIEW if fit_score >= 60 but email is missing (we can find email later). Use SKIP only if fit_score < 30 or the candidate is clearly irrelevant.
+- IMPORTANT: Do NOT skip or heavily penalise candidates just because they lack an email address. Missing email is a data gap, not a quality signal.`;
 
     try {
       const res = await this.anthropic.messages.create({

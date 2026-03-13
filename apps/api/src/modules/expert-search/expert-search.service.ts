@@ -94,14 +94,27 @@ export class ExpertSearchService {
     await progress(`Found ${academicCandidates.length} academic candidates`);
 
     // ── PHASE 2: Recruitment search (Apollo.io) ──────────────────────────────
-    await progress('Searching recruitment databases…');
-    const recruitmentCandidates = await this.apollo.findRecruitmentCandidates({
-      normalised,
-    });
-    await progress(`Found ${recruitmentCandidates.length} recruitment candidates`);
+    let recruitmentCandidates: Awaited<ReturnType<ApolloService['findRecruitmentCandidates']>> = [];
+    try {
+      await progress('Searching recruitment databases…');
+      recruitmentCandidates = await this.apollo.findRecruitmentCandidates({
+        normalised,
+      });
+      await progress(`Found ${recruitmentCandidates.length} recruitment candidates`);
+    } catch (err) {
+      this.logger.warn(`[ExpertSearch:${searchId}] Apollo phase failed (non-fatal): ${err.message}`);
+      await progress('Recruitment search failed — continuing with academic candidates only');
+    }
 
     // ── PHASE 3: Unified scoring + dedup ────────────────────────────────────
     const totalCandidates = academicCandidates.length + recruitmentCandidates.length;
+    if (totalCandidates === 0) {
+      this.logger.warn(`[ExpertSearch:${searchId}] No candidates from any source — nothing to score`);
+      await progress('No candidates found from any source');
+      await this.persistResults(searchId, []);
+      return;
+    }
+
     await progress(`Scoring ${totalCandidates} candidates with AI…`);
     const scored = await this.scoring.scoreAndMerge({
       academic: academicCandidates,
@@ -117,8 +130,14 @@ export class ExpertSearchService {
     await progress(`Scored ${scored.length} candidates`);
 
     // ── PHASE 3.5: Clay email enrichment (high-relevance, missing email only) ─
-    await progress('Enriching emails for top candidates…');
-    const enriched = await this.clay.enrichEmails(scored);
+    let enriched = scored;
+    try {
+      await progress('Enriching emails for top candidates…');
+      enriched = await this.clay.enrichEmails(scored);
+    } catch (err) {
+      this.logger.warn(`[ExpertSearch:${searchId}] Clay enrichment failed (non-fatal): ${err.message}`);
+      await progress('Email enrichment failed — continuing with available data');
+    }
 
     // ── Persist results ──────────────────────────────────────────────────────
     await progress('Saving results…');
