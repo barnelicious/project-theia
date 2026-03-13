@@ -144,6 +144,9 @@ export class ExpertSearchDto {
   @Field(() => [ExpertSearchResultDto])
   results: ExpertSearchResultDto[];
 
+  @Field(() => Int, { nullable: true })
+  resultCount?: number;
+
   @Field()
   createdAt: Date;
 

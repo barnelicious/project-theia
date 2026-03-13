@@ -87,13 +87,14 @@ export class ExpertSearchResolver {
   ): Promise<ExpertSearchDto[]> {
     const userId = 'dev-user'; // TODO: Replace with user.id when auth is wired up
     const searches = await this.expertSearchService.listSearches(userId);
-    return searches.map((s) => ({
+    return searches.map((s: any) => ({
       id: s.id,
       status: s.status,
       statusDetail: s.statusDetail ?? undefined,
       topic: s.topic,
       jobTitle: s.jobTitle,
       results: [],
+      resultCount: s._count?.results ?? 0,
       createdAt: s.createdAt,
       completedAt: s.completedAt ?? undefined,
     }));

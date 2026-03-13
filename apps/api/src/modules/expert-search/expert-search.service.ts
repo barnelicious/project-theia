@@ -130,6 +130,16 @@ export class ExpertSearchService {
   // ─── Persist to Postgres ─────────────────────────────────────────────────────
 
   private async persistResults(searchId: string, candidates: ScoredCandidate[]) {
+    this.logger.log(
+      `[ExpertSearch:${searchId}] Persisting ${candidates.length} candidates ` +
+        `(${candidates.filter((c) => c.email).length} with email, ` +
+        `${candidates.filter((c) => c.recommendedAction === 'OUTREACH').length} recommended for outreach)`,
+    );
+
+    if (candidates.length === 0) {
+      this.logger.warn(`[ExpertSearch:${searchId}] No candidates to persist — pipeline produced 0 results`);
+    }
+
     await this.prisma.$transaction([
       this.prisma.expertSearchResult.createMany({
         data: candidates.map((c) => ({
