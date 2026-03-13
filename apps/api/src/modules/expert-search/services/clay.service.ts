@@ -44,12 +44,17 @@ export class ClayService {
   private readonly POLL_INTERVAL_MS = 5000;
   // Max number of poll attempts before giving up
   private readonly MAX_POLL_ATTEMPTS = 12; // 12 × 5s = 60s timeout
+  private readonly enabled: boolean;
 
   constructor(private readonly config: ConfigService) {
+    const baseUrl = this.config.get('CLAY_API_BASE_URL', '');
+    const apiKey = this.config.get('CLAY_API_KEY', '');
+    this.enabled = !!(baseUrl && apiKey);
+
     this.client = axios.create({
-      baseURL: this.config.getOrThrow('CLAY_API_BASE_URL'),
+      baseURL: baseUrl || 'https://clay.placeholder',
       headers: {
-        Authorization: `Bearer ${this.config.getOrThrow('CLAY_API_KEY')}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -67,6 +72,11 @@ export class ClayService {
    * Clay-sourced emails filled in where found.
    */
   async enrichEmails(candidates: ScoredCandidate[]): Promise<ScoredCandidate[]> {
+    if (!this.enabled) {
+      this.logger.log('[Clay] Skipped — CLAY_API_BASE_URL / CLAY_API_KEY not configured');
+      return candidates;
+    }
+
     const targets = candidates.filter(
       (c) =>
         !c.email &&
