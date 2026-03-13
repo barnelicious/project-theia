@@ -59,32 +59,50 @@ export class ExpertSearchService {
     return search;
   }
 
+  // ─── Status updater ──────────────────────────────────────────────────────────
+
+  private async updateStatus(searchId: string, statusDetail: string) {
+    this.logger.log(`[ExpertSearch:${searchId}] ${statusDetail}`);
+    try {
+      await this.prisma.expertSearch.update({
+        where: { id: searchId },
+        data: { statusDetail },
+      });
+    } catch (err) {
+      this.logger.warn(`[ExpertSearch:${searchId}] Failed to update statusDetail: ${err.message}`);
+    }
+  }
+
   // ─── Full pipeline ───────────────────────────────────────────────────────────
 
   private async executePipeline(searchId: string, input: ExpertSearchInput) {
+    const progress = (detail: string) => this.updateStatus(searchId, detail);
+
     // ── PHASE 0: Normalise inputs ────────────────────────────────────────────
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 0 — Normalising inputs`);
+    await progress('Normalising search inputs…');
     const normalised = await this.normalisation.normalise(input);
 
     // ── PHASE 1: Academic expert identification (OpenAlex) ───────────────────
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 1 — Academic search`);
+    await progress('Searching academic literature…');
     const academicCandidates = await this.openAlex.findAcademicExperts({
       topic: input.topic,
       locations: normalised.locations,
       minHIndex: input.minHIndex ?? 0,
       minCitations: input.minCitations ?? 0,
+      onProgress: progress,
     });
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 1 complete — ${academicCandidates.length} academic candidates`);
+    await progress(`Found ${academicCandidates.length} academic candidates`);
 
     // ── PHASE 2: Recruitment search (Apollo.io) ──────────────────────────────
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 2 — Recruitment search`);
+    await progress('Searching recruitment databases…');
     const recruitmentCandidates = await this.apollo.findRecruitmentCandidates({
       normalised,
     });
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 2 complete — ${recruitmentCandidates.length} recruitment candidates`);
+    await progress(`Found ${recruitmentCandidates.length} recruitment candidates`);
 
     // ── PHASE 3: Unified scoring + dedup ────────────────────────────────────
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 3 — Unified scoring`);
+    const totalCandidates = academicCandidates.length + recruitmentCandidates.length;
+    await progress(`Scoring ${totalCandidates} candidates with AI…`);
     const scored = await this.scoring.scoreAndMerge({
       academic: academicCandidates,
       recruitment: recruitmentCandidates,
@@ -94,15 +112,16 @@ export class ExpertSearchService {
         jobDescription: input.jobDescription,
         locations: input.locations,
       },
+      onProgress: progress,
     });
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 3 complete — ${scored.length} scored candidates`);
+    await progress(`Scored ${scored.length} candidates`);
 
     // ── PHASE 3.5: Clay email enrichment (high-relevance, missing email only) ─
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 3.5 — Clay email enrichment`);
+    await progress('Enriching emails for top candidates…');
     const enriched = await this.clay.enrichEmails(scored);
-    this.logger.log(`[ExpertSearch:${searchId}] Phase 3.5 complete`);
 
     // ── Persist results ──────────────────────────────────────────────────────
+    await progress('Saving results…');
     await this.persistResults(searchId, enriched);
 
     this.logger.log(`[ExpertSearch:${searchId}] Pipeline complete ✓`);

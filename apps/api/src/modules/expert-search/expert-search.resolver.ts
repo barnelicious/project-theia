@@ -27,6 +27,7 @@ export class ExpertSearchResolver {
     return {
       id: search.id,
       status: search.status,
+      statusDetail: search.statusDetail ?? undefined,
       topic: search.topic,
       jobTitle: search.jobTitle,
       results: [],
@@ -47,6 +48,7 @@ export class ExpertSearchResolver {
     return {
       id: search.id,
       status: search.status,
+      statusDetail: search.statusDetail ?? undefined,
       topic: search.topic,
       jobTitle: search.jobTitle,
       results: search.results.map((r) => ({
@@ -88,6 +90,7 @@ export class ExpertSearchResolver {
     return searches.map((s) => ({
       id: s.id,
       status: s.status,
+      statusDetail: s.statusDetail ?? undefined,
       topic: s.topic,
       jobTitle: s.jobTitle,
       results: [],

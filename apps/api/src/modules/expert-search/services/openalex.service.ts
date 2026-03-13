@@ -81,21 +81,33 @@ export class OpenAlexService {
     minHIndex: number;
     minCitations: number;
     maxResults?: number;
+    onProgress?: (detail: string) => Promise<void>;
   }): Promise<AcademicCandidate[]> {
-    const { topic, locations, minHIndex, minCitations, maxResults = 300 } = params;
+    const { topic, locations, minHIndex, minCitations, maxResults = 300, onProgress } = params;
 
     this.logger.log(`[OpenAlex] Starting academic search: topic="${topic}", locations=${JSON.stringify(locations)}`);
 
     // Step 1: Search works by topic, collect unique author IDs with topic paper counts
     const authorPaperCounts = await this.searchAuthorsByTopic(topic, maxResults);
     this.logger.log(`[OpenAlex] Found ${authorPaperCounts.size} unique authors from topic search`);
+    await onProgress?.(`Found ${authorPaperCounts.size} authors in literature — enriching profiles…`);
 
     // Step 2: Enrich each author, apply threshold filter
-    const enriched = await this.enrichAuthors(authorPaperCounts, { minHIndex, minCitations, locations });
+    // Prioritise authors with the most topic-relevant papers to stay fast
+    const sortedAuthors = [...authorPaperCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 100);
+    const topAuthors = new Map(sortedAuthors);
+    if (authorPaperCounts.size > 100) {
+      this.logger.log(`[OpenAlex] Capped enrichment to top 100 of ${authorPaperCounts.size} authors by paper count`);
+      await onProgress?.(`Enriching top 100 of ${authorPaperCounts.size} authors (sorted by relevance)…`);
+    }
+    const enriched = await this.enrichAuthors(topAuthors, { minHIndex, minCitations, locations }, onProgress);
     this.logger.log(`[OpenAlex] ${enriched.length} authors passed thresholds`);
+    await onProgress?.(`${enriched.length} authors passed filters — extracting emails from papers…`);
 
     // Step 3: For qualifying authors, attempt email extraction from recent PDFs
-    const withEmails = await this.extractEmailsFromPapers(enriched);
+    const withEmails = await this.extractEmailsFromPapers(enriched, onProgress);
 
     return withEmails;
   }
@@ -153,10 +165,17 @@ export class OpenAlexService {
   private async enrichAuthors(
     authorPaperCounts: Map<string, number>,
     filters: { minHIndex: number; minCitations: number; locations: string[] },
+    onProgress?: (detail: string) => Promise<void>,
   ): Promise<(OpenAlexAuthorRaw & { topicPaperCount: number })[]> {
     const results: (OpenAlexAuthorRaw & { topicPaperCount: number })[] = [];
+    const total = authorPaperCounts.size;
+    let processed = 0;
 
     for (const [id, topicPaperCount] of authorPaperCounts) {
+      processed++;
+      if (processed % 10 === 0 || processed === total) {
+        await onProgress?.(`Enriching authors (${processed}/${total}) — ${results.length} qualified so far`);
+      }
       try {
         const res = await this.client.get(`/authors/${id}`);
         const author: OpenAlexAuthorRaw = res.data;
@@ -196,10 +215,17 @@ export class OpenAlexService {
 
   private async extractEmailsFromPapers(
     authors: (OpenAlexAuthorRaw & { topicPaperCount: number })[],
+    onProgress?: (detail: string) => Promise<void>,
   ): Promise<AcademicCandidate[]> {
     const candidates: AcademicCandidate[] = [];
+    const total = authors.length;
+    let processed = 0;
 
     for (const author of authors) {
+      processed++;
+      if (processed % 5 === 0 || processed === total) {
+        await onProgress?.(`Extracting emails from papers (${processed}/${total})`);
+      }
       const authorId = author.id.replace('https://openalex.org/', '');
       let emails: string[] = [];
 
@@ -216,7 +242,7 @@ export class OpenAlexService {
         const works = worksRes.data.results ?? [];
         const pdfUrls = this.extractPdfUrls(works);
 
-        for (const url of pdfUrls.slice(0, 5)) { // max 5 PDFs per author
+        for (const url of pdfUrls.slice(0, 2)) { // max 2 PDFs per author (keeps pipeline fast)
           const extracted = await this.extractEmailsFromPdf(url);
           emails.push(...extracted);
           await this.sleep(500);
@@ -283,7 +309,7 @@ export class OpenAlexService {
     try {
       const res = await axios.get(url, {
         responseType: 'arraybuffer',
-        timeout: 15000,
+        timeout: 8000,
         headers: { 'User-Agent': 'IRIS/1.0' },
       });
 

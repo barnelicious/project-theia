@@ -60,8 +60,9 @@ export class ScoringService {
     academic: AcademicCandidate[];
     recruitment: RecruitmentCandidate[];
     context: ScoringContext;
+    onProgress?: (detail: string) => Promise<void>;
   }): Promise<ScoredCandidate[]> {
-    const { academic, recruitment, context } = params;
+    const { academic, recruitment, context, onProgress } = params;
 
     // Build unified candidate list, deduplicating by email or ORCID
     const merged = this.mergeAndDedup(academic, recruitment);
@@ -71,6 +72,7 @@ export class ScoringService {
     const scored: ScoredCandidate[] = [];
     for (let i = 0; i < merged.length; i += this.BATCH_SIZE) {
       const batch = merged.slice(i, i + this.BATCH_SIZE);
+      await onProgress?.(`Scoring candidates (${Math.min(i + this.BATCH_SIZE, merged.length)}/${merged.length})…`);
       const results = await Promise.all(
         batch.map((c) => this.scoreCandidate(c, context)),
       );

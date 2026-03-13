@@ -40,6 +40,7 @@ model ExpertSearch {
 
   // Status
   status       String    @default("RUNNING") // RUNNING | COMPLETE | FAILED
+  statusDetail String?   // e.g. "Enriching authors (42/187)" — live progress
   completedAt  DateTime?
   errorMessage String?
 

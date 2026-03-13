@@ -132,6 +132,9 @@ export class ExpertSearchDto {
   @Field()
   status: string;
 
+  @Field({ nullable: true })
+  statusDetail?: string;
+
   @Field()
   topic: string;
 
